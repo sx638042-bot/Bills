@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f4f5f7">
+<meta name="description" content="账单明细查询 — 按大类分类 / 耐用分类筛选并实时汇总金额">
+<title>账单查询</title>
+<style>
+/* ============ 基础重置（移动 / 微信内适配） ============ */
+html{
+  /* 关键：阻止微信 Android X5 内核的“字体大小”设置放大页面文字 */
+  -webkit-text-size-adjust:100% !important;
+  text-size-adjust:100% !important;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body{
+  margin:0; padding:0;
+  background:#f4f5f7; color:#1f2328;
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+  -webkit-text-size-adjust:100% !important;
+}
+img{ max-width:100%; }
+button,input{ font-family:inherit; font-size:inherit; color:inherit; }
+
+/* ============ 顶部汇总栏 ============ */
+#topbar{
+  position:-webkit-sticky; position:sticky; top:0; z-index:20;
+  background:#fff;
+  padding:12px 16px calc(10px) 16px;
+  padding-top:calc(12px + constant(safe-area-inset-top));
+  padding-top:calc(12px + env(safe-area-inset-top));
+  border-bottom:1px solid #eceef1;
+  box-shadow:0 1px 6px rgba(20,24,31,.05);
+}
+.tb-title{
+  display:-webkit-flex; display:flex; align-items:baseline; justify-content:space-between;
+  font-size:13px; color:#8b919a;
+}
+.tb-title .src{ font-size:12px; color:#a8aeb8; }
+#total{
+  margin-top:4px;
+  font-size:32px; font-weight:700; letter-spacing:-.5px; color:#d93025;
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum";
+}
+#total .unit{ font-size:18px; font-weight:600; margin-right:2px; }
+#count{ margin-top:2px; font-size:12px; color:#8b919a; }
+
+/* ============ 筛选区 ============ */
+#panel{
+  background:#fff; padding:10px 0 12px; margin-bottom:8px;
+  border-bottom:1px solid #eceef1;
+}
+.frow{ padding:0 16px; }
+.frow + .frow{ margin-top:10px; }
+.flabel{
+  font-size:12px; color:#8b919a; margin-bottom:6px;
+  display:-webkit-flex; display:flex; align-items:center; justify-content:space-between;
+}
+.flabel b{ color:#5a626c; font-weight:600; }
+.reset{
+  border:0; background:none; padding:2px 4px; color:#2d6ae0; font-size:12px;
+  touch-action:manipulation;
+}
+.chips{
+  display:-webkit-flex; display:flex; -webkit-flex-wrap:nowrap; flex-wrap:nowrap;
+  overflow-x:auto; overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:4px; margin:0 -16px; padding-left:16px; padding-right:16px;
+  scrollbar-width:none;
+}
+.chips::-webkit-scrollbar{ display:none; }
+.chip{
+  -webkit-flex:0 0 auto; flex:0 0 auto;
+  display:inline-block; white-space:nowrap;
+  padding:6px 13px; margin:0 6px 2px 0;
+  border:1px solid #e3e6ea; border-radius:16px;
+  background:#fff; color:#5a626c; font-size:13px;
+  touch-action:manipulation; cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.chip:active{ background:#f0f2f5; }
+.chip .amt{ font-size:11px; color:#a8aeb8; margin-left:4px; }
+.chip.on{ background:#2d6ae0; border-color:#2d6ae0; color:#fff; }
+.chip.on .amt{ color:rgba(255,255,255,.75); }
+
+/* 搜索 + 排序 */
+.toolbar{
+  display:-webkit-flex; display:flex; padding:10px 16px 0;
+}
+.search{
+  -webkit-flex:1 1 auto; flex:1 1 auto; min-width:0;
+  border:1px solid #e3e6ea; border-radius:8px; background:#fafbfc;
+  padding:8px 11px; font-size:14px; outline:none;
+  -webkit-appearance:none; appearance:none;
+}
+.search:focus{ border-color:#2d6ae0; background:#fff; }
+.sbtn{
+  -webkit-flex:0 0 auto; flex:0 0 auto; margin-left:8px;
+  border:1px solid #e3e6ea; border-radius:8px; background:#fafbfc;
+  padding:8px 11px; font-size:13px; color:#5a626c; white-space:nowrap;
+  touch-action:manipulation;
+}
+.sbtn:active{ background:#f0f2f5; }
+
+/* ============ 分类占比 ============ */
+#summary{
+  background:#fff; padding:12px 16px; margin-bottom:8px;
+  border-bottom:1px solid #eceef1;
+}
+.sum-h{ font-size:12px; color:#8b919a; margin-bottom:8px; }
+.bar-row{ margin-bottom:8px; }
+.bar-row:last-child{ margin-bottom:0; }
+.bar-t{
+  display:-webkit-flex; display:flex; justify-content:space-between;
+  font-size:13px; color:#3c424a; margin-bottom:4px;
+}
+.bar-t .v{ color:#5a626c; font-variant-numeric:tabular-nums; }
+.bar-bg{ height:6px; background:#f0f2f5; border-radius:3px; overflow:hidden; }
+.bar-fg{ height:6px; border-radius:3px; transition:width .25s ease; }
+
+/* ============ 明细列表 ============ */
+#list{ padding:0 0 24px; }
+.grp-date{
+  padding:10px 16px 6px; font-size:12px; color:#8b919a;
+  display:-webkit-flex; display:flex; justify-content:space-between;
+}
+.card{
+  display:-webkit-flex; display:flex; align-items:flex-start; justify-content:space-between;
+  background:#fff; margin:0 12px 8px; padding:11px 13px;
+  border-radius:10px; box-shadow:0 1px 3px rgba(20,24,31,.05);
+}
+.card .left{ min-width:0; -webkit-flex:1 1 auto; flex:1 1 auto; padding-right:10px; }
+.card .name{
+  font-size:15px; color:#1f2328; font-weight:600; line-height:1.35;
+  word-break:break-all;
+}
+.card .meta{ margin-top:4px; font-size:12px; color:#8b919a; line-height:1.5; word-break:break-all; }
+.card .meta .dot{
+  display:inline-block; width:6px; height:6px; border-radius:50%;
+  margin-right:4px; vertical-align:1px;
+}
+.card .tags{ margin-top:5px; }
+.tag{
+  display:inline-block; font-size:11px; padding:2px 7px; border-radius:4px;
+  background:#f2f4f7; color:#6b7280; margin:0 5px 3px 0;
+}
+.tag.dur{ background:#eef4ff; color:#2d6ae0; }
+.card .right{ -webkit-flex:0 0 auto; flex:0 0 auto; text-align:right; }
+.card .money{
+  font-size:16px; font-weight:700; color:#d93025; white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.card .when{ margin-top:5px; font-size:11px; color:#a8aeb8; white-space:nowrap; }
+
+.empty{ text-align:center; padding:48px 20px; color:#a8aeb8; font-size:14px; }
+.empty .big{ font-size:34px; display:block; margin-bottom:8px; opacity:.5; }
+
+#foot{
+  text-align:center; padding:18px 16px calc(20px + env(safe-area-inset-bottom));
+  font-size:11px; color:#b3b9c2; line-height:1.7;
+}
+#foot .sp{ padding-bottom:constant(safe-area-inset-bottom); padding-bottom:env(safe-area-inset-bottom); }
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="tb-title">
+    <span>筛选后合计支出</span>
+    <span class="src" id="src"></span>
+  </div>
+  <div id="total"><span class="unit">¥</span><span id="totalNum">0.00</span></div>
+  <div id="count">共 0 笔</div>
+</header>
+
+<section id="panel">
+  <div class="frow">
+    <div class="flabel"><b>大类分类</b><button class="reset" id="resetCat">重置</button></div>
+    <div class="chips" id="catChips"></div>
+  </div>
+  <div class="frow">
+    <div class="flabel"><b>耐用分类</b><button class="reset" id="resetDur">重置</button></div>
+    <div class="chips" id="durChips"></div>
+  </div>
+  <div class="toolbar">
+    <input class="search" id="q" type="search" placeholder="搜索交易对象 / 商品" autocomplete="off">
+    <button class="sbtn" id="sortBtn">按时间 ↓</button>
+  </div>
+</section>
+
+<section id="summary">
+  <div class="sum-h">当前筛选 · 大类占比</div>
+  <div id="bars"></div>
+</section>
+
+<main id="list"></main>
+
+<footer id="foot"><span class="sp">数据由本地表格离线生成 · 单文件网页，无需联网</span></footer>
+
+<script>
+/* ============ 数据（构建时由 export_data.mjs 注入） ============ */
+var DATA = {"meta":{"source":"账单汇总.xlsx","generatedAt":"2026-10-26","count":233,"total":8059.16,"categories":["生活日用","必要饮食","交通出行","社交聚餐","其他","休闲饮食","运动健康","服饰","药品医疗"],"durations":["当月","三个月","半年以上","一过性"]},"rows":[{"d":"2026-09-19","t":"08:56:32","p":"顺丰速运","c":"其他","u":"一过性","g":"","a":73.6},{"d":"2026-09-19","t":"09:17:29","p":"微信支付天津滨海国际机场有限公司","c":"休闲饮食","u":"当月","g":"","a":3},{"d":"2026-09-19","t":"15:04:30","p":"LAWSON","c":"休闲饮食","u":"当月","g":"","a":2},{"d":"2026-09-19","t":"19:05:17","p":"微信红包","c":"社交聚餐","u":"当月","g":"","a":9.5},{"d":"2026-09-19","t":"20:45:42","p":"群收款","c":"社交聚餐","u":"当月","g":"","a":15},{"d":"2026-09-20","t":"11:09:04","p":"泉膳中国","c":"必要饮食","u":"当月","g":"【堂食】_宁波万象城店_240935_2559","a":25.05},{"d":"2026-09-22","t":"13:06:14","p":"宁波万里教育后勤服务有限公司","c":"生活日用","u":"当月","g":"500051-瀹佽椁愬巺-DE36","a":132},{"d":"2026-09-22","t":"14:42:24","p":"美团日用百货","c":"生活日用","u":"三个月","g":"AA·百货超市（南商店）-美团App-26092211200700001307107513764667","a":60.9},{"d":"2026-09-22","t":"17:20:10","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"","a":33.8},{"d":"2026-09-22","t":"17:39:29","p":"统一超商（浙江）便利店有限公司宁波分公司","c":"休闲饮食","u":"当月","g":"支付订单","a":16.9},{"d":"2026-09-23","t":"09:28:25","p":"十足集团有限公司","c":"休闲饮食","u":"当月","g":"","a":5.8},{"d":"2026-09-23","t":"11:44:24","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"","a":21.8},{"d":"2026-09-23","t":"12:04:14","p":"微信支付十足集团有限公司","c":"休闲饮食","u":"当月","g":"","a":13},{"d":"2026-09-23","t":"18:39:23","p":"携程旅行网","c":"交通出行","u":"一过性","g":"单程宁波天津","a":520},{"d":"2026-09-23","t":"18:43:03","p":"微信支付十足集团有限公司","c":"休闲饮食","u":"当月","g":"","a":9.9},{"d":"2026-09-23","t":"22:22:03","p":"微信支付十足集团有限公司","c":"休闲饮食","u":"当月","g":"","a":22.9},{"d":"2026-09-24","t":"08:57:44","p":"十足集团有限公司","c":"休闲饮食","u":"当月","g":"","a":5.8},{"d":"2026-09-24","t":"12:05:21","p":"微信支付扫二维码付款","c":"必要饮食","u":"当月","g":"","a":19},{"d":"2026-09-24","t":"19:07:43","p":"携程旅行网","c":"交通出行","u":"一过性","g":"单程天津宁波","a":700},{"d":"2026-09-24","t":"19:07:44","p":"支付宝-消费携程旅行网","c":"必要饮食","u":"当月","g":"","a":19.27},{"d":"2026-09-24","t":"19:47:41","p":"钱小奴餐饮","c":"社交聚餐","u":"当月","g":"","a":50},{"d":"2026-09-24","t":"20:45:59","p":"微信支付美团","c":"其他","u":"当月","g":"","a":8},{"d":"2026-09-25","t":"10:05:16","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":6.3},{"d":"2026-09-25","t":"12:39:37","p":"沪浙7-ELEVEN","c":"必要饮食","u":"当月","g":"支付订单","a":2},{"d":"2026-09-25","t":"12:42:33","p":"东伊顺特色盖浇饭","c":"必要饮食","u":"当月","g":"东伊顺特色盖浇饭","a":22},{"d":"2026-09-25","t":"18:04:12","p":"三关六码头（宁波机场T1航站楼店）","c":"其他","u":"一过性","g":"宁波机场T1航站楼店","a":76.16},{"d":"2026-09-25","t":"18:16:00","p":"三关六码头机场安检内2店","c":"其他","u":"一过性","g":"三关六码头机场安检内2店","a":181.6},{"d":"2026-09-27","t":"12:03:46","p":"石家庄捷通餐饮服务有限公司","c":"休闲饮食","u":"当月","g":"武邑服务区北超市","a":5},{"d":"2026-09-29","t":"16:37:19","p":"支付宝-消费携程旅行网","c":"其他","u":"当月","g":"","a":6},{"d":"2026-09-30","t":"16:09:49","p":"Apple","c":"其他","u":"三个月","g":"apple.com/bill/MTZ547HW32a0","a":19},{"d":"2026-09-30","t":"17:03:08","p":"蒸蒸日上","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":4.5},{"d":"2026-09-30","t":"17:09:36","p":"谭素鸿","c":"社交聚餐","u":"当月","g":"收款方备注:二维码收款","a":50},{"d":"2026-10-01","t":"15:12:46","p":"瓦力科技","c":"其他","u":"三个月","g":"连续包月","a":12},{"d":"2026-10-02","t":"15:32:29","p":"美团App优购镜仓（邯山万达店）","c":"其他","u":"一过性","g":"","a":72},{"d":"2026-10-02","t":"15:34:08","p":"优购镜仓","c":"其他","u":"一过性","g":"Thank you for your patronage!","a":46},{"d":"2026-10-02","t":"19:23:30","p":"美团App高济仁泰医药(水院路店)","c":"药品医疗","u":"半年以上","g":"","a":22.9},{"d":"2026-10-03","t":"15:53:01","p":"中铁网络","c":"交通出行","u":"一过性","g":"12306消费","a":12},{"d":"2026-10-03","t":"16:46:26","p":"麦当劳","c":"必要饮食","u":"当月","g":"河南迈乐加餐厅食品有限公司","a":67.5},{"d":"2026-10-03","t":"17:27:51","p":"ONESHOP","c":"生活日用","u":"半年以上","g":"跨境达收银系统-订单结算","a":43.7},{"d":"2026-10-03","t":"22:32:37","p":"惠州市惠城区萌宝园艺经营部","c":"生活日用","u":"半年以上","g":"","a":9.9},{"d":"2026-10-03","t":"22:35:27","p":"抖音电商/格物致品PAKCHOICE餐饮具旗","c":"生活日用","u":"半年以上","g":"","a":9.8},{"d":"2026-10-03","t":"22:38:15","p":"抖音电商/格物致品洁鑫家居百货","c":"生活日用","u":"半年以上","g":"","a":12.9},{"d":"2026-10-03","t":"22:39:44","p":"壹念官方旗舰店","c":"生活日用","u":"半年以上","g":"","a":13.9},{"d":"2026-10-04","t":"09:26:47","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.8},{"d":"2026-10-04","t":"12:16:40","p":"黎巴嫩美食","c":"必要饮食","u":"当月","g":"黎巴嫩美食","a":28},{"d":"2026-10-04","t":"12:56:26","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":9.9},{"d":"2026-10-04","t":"21:26:49","p":"陈有春鲜活牛肉店（鄞州万达店）","c":"社交聚餐","u":"当月","g":"美团收银909700217839366100","a":100},{"d":"2026-10-04","t":"21:40:32","p":"电影票","c":"社交聚餐","u":"当月","g":"转账备注:微信转账","a":59},{"d":"2026-10-05","t":"09:17:02","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4.4},{"d":"2026-10-05","t":"13:09:51","p":"由田口餐饮","c":"必要饮食","u":"当月","g":"重庆小面(小灶台)","a":22},{"d":"2026-10-05","t":"18:46:58","p":"荣味盖浇饭诺丁汉店","c":"必要饮食","u":"当月","g":"荣味盖浇饭诺丁汉店","a":19},{"d":"2026-10-05","t":"18:48:16","p":"意杯诺丁汉店","c":"必要饮食","u":"当月","g":"意杯诺丁汉店","a":3},{"d":"2026-10-05","t":"20:44:05","p":"CGV","c":"休闲饮食","u":"当月","g":"CGV 宁波鄞州","a":11},{"d":"2026-10-05","t":"22:52:16","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":3.8},{"d":"2026-10-06","t":"08:59:29","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.8},{"d":"2026-10-06","t":"13:33:04","p":"果木烤鸭饭","c":"必要饮食","u":"当月","g":"果木烤鸭饭","a":18},{"d":"2026-10-06","t":"16:09:09","p":"宝洋烟酒","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":3},{"d":"2026-10-06","t":"19:23:55","p":"麦当劳","c":"必要饮食","u":"当月","g":"麦当劳","a":14.9},{"d":"2026-10-06","t":"21:24:40","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":14.5},{"d":"2026-10-07","t":"09:44:22","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":2.5},{"d":"2026-10-07","t":"09:45:09","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":1.5},{"d":"2026-10-07","t":"11:04:41","p":"天**","c":"生活日用","u":"半年以上","g":"拜灭士杀蝇饵剂杀虫剂灭苍蝇药小飞虫果蝇诱捕器苍蝇引诱捕捉器","a":29.9},{"d":"2026-10-07","t":"11:27:23","p":"荣味盖浇饭诺丁汉店","c":"必要饮食","u":"当月","g":"荣味盖浇饭诺丁汉店","a":19},{"d":"2026-10-07","t":"15:27:20","p":"抖音电商/格物致品朗朗甄选","c":"运动健康","u":"半年以上","g":"","a":36.8},{"d":"2026-10-07","t":"16:55:50","p":"Apple","c":"其他","u":"三个月","g":"apple.com/bill/MTZ54YD32Qa0","a":20},{"d":"2026-10-07","t":"17:26:06","p":"天**","c":"生活日用","u":"三个月","g":"威猛先生管道疏通剂下水道疏通剂除臭剂强力溶解油污毛发防止堵塞","a":29.9},{"d":"2026-10-07","t":"17:27:56","p":"抖音电商/格物致品上海曼臣电子商务","c":"生活日用","u":"三个月","g":"","a":39.9},{"d":"2026-10-07","t":"17:33:08","p":"ic**s","c":"生活日用","u":"三个月","g":"小林制药消臭元厕所除臭神器空气清新剂卫生间室内持久家用香薰","a":34.76},{"d":"2026-10-07","t":"18:03:17","p":"HIPPO BURGER","c":"必要饮食","u":"当月","g":"美团收银909700217950609197","a":25},{"d":"2026-10-07","t":"18:21:58","p":"沪浙7-ELEVEN","c":"交通出行","u":"当月","g":"支付订单","a":2},{"d":"2026-10-07","t":"19:41:22","p":"苏英**店","c":"生活日用","u":"三个月","g":"卫生间纸巾盒壁挂式厕所抽纸盒浴室免打孔厕纸架洗手间卷纸置物架","a":12.6},{"d":"2026-10-07","t":"19:53:22","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":3.8},{"d":"2026-10-07","t":"21:10:02","p":"趣枫玩桌游馆","c":"社交聚餐","u":"当月","g":"趣枫玩桌游馆","a":3},{"d":"2026-10-08","t":"00:09:36","p":"发出群红包","c":"社交聚餐","u":"当月","g":"/","a":30.4},{"d":"2026-10-08","t":"00:14:44","p":"Thomas.W🌳","c":"社交聚餐","u":"当月","g":"/","a":28},{"d":"2026-10-08","t":"00:33:10","p":"程淑云","c":"休闲饮食","u":"当月","g":"收款方备注:二维码收款","a":43},{"d":"2026-10-08","t":"00:37:38","p":"小猪宝宝孩儿 (这次一定不摆烂)","c":"运动健康","u":"当月","g":"转账备注:微信转账","a":68},{"d":"2026-10-08","t":"09:12:45","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":2.5},{"d":"2026-10-08","t":"09:12:59","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":1.5},{"d":"2026-10-08","t":"13:23:15","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10085008047455122332460","a":34.8},{"d":"2026-10-08","t":"18:08:31","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10085008047466084254508","a":27.8},{"d":"2026-10-08","t":"23:49:22","p":"je**店","c":"服饰","u":"半年以上","g":"JEEP纯棉包头帽男户外防风骑行保暖堆堆帽秋冬季防寒护耳帽子冷帽","a":38.6},{"d":"2026-10-09","t":"00:06:21","p":"迪卡**店","c":"运动健康","u":"半年以上","g":"迪卡侬骑行裤男款男士公路车自行车骑行短裤内裤夏季运动装备MORA","a":244.9},{"d":"2026-10-09","t":"00:11:02","p":"洛克**店","c":"服饰","u":"半年以上","g":"洛克兄弟保暖运动长裤防风休闲健身跑步男女户外秋冬季抓绒骑行裤","a":160.14},{"d":"2026-10-09","t":"00:14:42","p":"洛克**店","c":"运动健康","u":"半年以上","g":"洛克兄弟自行车灯夜骑强光手电筒前灯儿童山地公路车单车骑行装备","a":111.8},{"d":"2026-10-09","t":"11:23:01","p":"华饮会","c":"必要饮食","u":"当月","g":"美团收银909700218002884966","a":19.5},{"d":"2026-10-09","t":"19:15:22","p":"鑫鑫烟副食","c":"休闲饮食","u":"当月","g":"便利店","a":6},{"d":"2026-10-09","t":"19:31:20","p":"宁波海曙双兵小吃店","c":"休闲饮食","u":"当月","g":"长沙臭豆腐脆皮肠","a":15},{"d":"2026-10-09","t":"19:37:39","p":"小港西宁生煎","c":"必要饮食","u":"当月","g":"/","a":24},{"d":"2026-10-09","t":"19:41:30","p":"糖葫芦","c":"休闲饮食","u":"当月","g":"收款方备注:二维码收款","a":10},{"d":"2026-10-09","t":"20:55:03","p":"Apple","c":"其他","u":"三个月","g":"apple.com/bill/MTZ554ZSFWa0","a":27},{"d":"2026-10-10","t":"09:37:00","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4},{"d":"2026-10-10","t":"09:37:47","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":10.5},{"d":"2026-10-10","t":"10:04:47","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":7.8},{"d":"2026-10-10","t":"12:29:01","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10105008047536175768364","a":19.9},{"d":"2026-10-10","t":"16:23:02","p":"哈啰出行","c":"交通出行","u":"当月","g":"哈啰单车骑行","a":6},{"d":"2026-10-10","t":"17:27:26","p":"哈啰出行","c":"交通出行","u":"当月","g":"哈啰单车骑行","a":1.8},{"d":"2026-10-10","t":"18:53:40","p":"樱***尽","c":"社交聚餐","u":"当月","g":"宁波兴宁万悦集餐饮团购券","a":57},{"d":"2026-10-10","t":"19:46:02","p":"美团App团购","c":"社交聚餐","u":"当月","g":"","a":88},{"d":"2026-10-10","t":"21:07:02","p":"望潮·印象城店","c":"社交聚餐","u":"当月","g":"堂食-望潮·Ncyle Kitchen（印象城店）","a":65},{"d":"2026-10-11","t":"11:50:40","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10115008047582715396908","a":28.8},{"d":"2026-10-11","t":"12:43:48","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4.5},{"d":"2026-10-11","t":"12:49:10","p":"洁柔**店","c":"生活日用","u":"半年以上","g":"洁柔溶易抽大方抽悬挂式纸抽草纸厕所专用大便纸厕纸压花卫生纸巾","a":15.8},{"d":"2026-10-11","t":"19:59:47","p":"美团厦门三快在线科技有限公司","c":"社交聚餐","u":"当月","g":"","a":40},{"d":"2026-10-11","t":"20:00:38","p":"宁波市鄞州福明甬采饭店","c":"社交聚餐","u":"当月","g":"宁波市鄞州福明甬采饭店","a":25},{"d":"2026-10-11","t":"21:28:40","p":"趣枫玩桌游馆","c":"必要饮食","u":"当月","g":"趣枫玩桌游馆","a":3},{"d":"2026-10-11","t":"22:36:56","p":"iCloud 由云上贵州运营","c":"其他","u":"三个月","g":"apple.com/bill/MTZ55D1TD4a0","a":21},{"d":"2026-10-12","t":"00:05:47","p":"发出群红包","c":"社交聚餐","u":"当月","g":"/","a":4.3},{"d":"2026-10-12","t":"09:02:09","p":"陈衍呈 (1)聚餐","c":"社交聚餐","u":"当月","g":"/","a":21.82},{"d":"2026-10-12","t":"09:33:48","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4},{"d":"2026-10-12","t":"12:51:09","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":13.7},{"d":"2026-10-12","t":"17:14:41","p":"阮红","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":3},{"d":"2026-10-12","t":"17:20:05","p":"宁波荣味盖浇饭","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":15},{"d":"2026-10-12","t":"22:04:04","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":3.5},{"d":"2026-10-13","t":"09:58:54","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.8},{"d":"2026-10-13","t":"13:07:01","p":"十足","c":"生活日用","u":"当月","g":"十足","a":31.74},{"d":"2026-10-13","t":"18:37:34","p":"宁波荣味盖浇饭","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":15},{"d":"2026-10-13","t":"20:16:13","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":11.42},{"d":"2026-10-14","t":"09:00:24","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":15},{"d":"2026-10-14","t":"12:31:16","p":"宁波荣味盖浇饭","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":23},{"d":"2026-10-14","t":"14:02:01","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4},{"d":"2026-10-14","t":"18:06:30","p":"找不到我了","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":33},{"d":"2026-10-14","t":"20:08:56","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":3.5},{"d":"2026-10-15","t":"06:03:25","p":"Apple","c":"其他","u":"三个月","g":"apple.com/bill/MTZ55Q7HNQa0","a":12},{"d":"2026-10-15","t":"09:11:09","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.5},{"d":"2026-10-15","t":"13:18:00","p":"淘宝闪购","c":"必要饮食","u":"当月","g":"澳洲肉派Aussie Pies(诺丁汉店)外卖订单","a":21.8},{"d":"2026-10-15","t":"21:37:22","p":"COMMUNE","c":"社交聚餐","u":"当月","g":"COMMUNE幻师（宁波宝龙广场店）-点餐即支付-3090300056457533538","a":50},{"d":"2026-10-15","t":"21:42:24","p":"COMMUNE","c":"社交聚餐","u":"当月","g":"COMMUNE幻师（宁波宝龙广场店）-点餐即支付-3090305116700729401","a":49},{"d":"2026-10-16","t":"01:34:05","p":"群收款聚餐","c":"社交聚餐","u":"当月","g":"","a":53.37},{"d":"2026-10-16","t":"10:54:48","p":"麦当劳","c":"必要饮食","u":"当月","g":"麦当劳","a":27.9},{"d":"2026-10-16","t":"11:02:48","p":"Apple","c":"其他","u":"当月","g":"apple.com/bill/MTZ55VG955a0","a":15},{"d":"2026-10-16","t":"21:42:20","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":16.8},{"d":"2026-10-17","t":"10:25:56","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":4},{"d":"2026-10-17","t":"13:07:29","p":"淘宝闪购","c":"必要饮食","u":"当月","g":"HIPPO-BURGER(诺丁汉店)外卖订单","a":27},{"d":"2026-10-17","t":"13:47:31","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.5},{"d":"2026-10-17","t":"17:06:50","p":"美团汉海信息技术（上海）有限公司","c":"社交聚餐","u":"当月","g":"","a":29.9},{"d":"2026-10-17","t":"20:51:26","p":"上海华程西南国际旅行社有限公司","c":"交通出行","u":"一过性","g":"","a":39},{"d":"2026-10-17","t":"21:58:12","p":"缴费助手","c":"交通出行","u":"当月","g":"停车费-浙GD90608","a":5},{"d":"2026-10-17","t":"22:28:34","p":"十足集团有限公司","c":"必要饮食","u":"当月","g":"","a":5.5},{"d":"2026-10-18","t":"10:02:40","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":2.5},{"d":"2026-10-18","t":"11:18:28","p":"象山港大桥高速","c":"交通出行","u":"当月","g":"浙江高速：浙江云龙站-浙江象山站","a":11},{"d":"2026-10-18","t":"11:44:53","p":"早点见面","c":"必要饮食","u":"当月","g":"/","a":36},{"d":"2026-10-18","t":"14:15:21","p":"LONELY cafe bar","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10185008047940704994353","a":15},{"d":"2026-10-18","t":"15:20:01","p":"滴滴出行","c":"交通出行","u":"当月","g":"","a":10},{"d":"2026-10-18","t":"16:30:37","p":"韵涵","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":5},{"d":"2026-10-18","t":"16:45:46","p":"微信支付象山皮纳特文旅发展有限公","c":"交通出行","u":"当月","g":"","a":5},{"d":"2026-10-18","t":"19:29:04","p":"绕城东段高速","c":"交通出行","u":"当月","g":"浙江高速：浙江石浦番西站-云龙","a":15},{"d":"2026-10-18","t":"20:56:48","p":"陈有春鲜活牛肉店（鄞州万达店）","c":"社交聚餐","u":"当月","g":"","a":100},{"d":"2026-10-18","t":"21:24:15","p":"結束·","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":40},{"d":"2026-10-19","t":"12:25:16","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10195008047987508043564","a":27.8},{"d":"2026-10-19","t":"16:24:33","p":"浙江太古可口可乐饮料有限公司","c":"必要饮食","u":"当月","g":"先购后付","a":2},{"d":"2026-10-19","t":"18:20:34","p":"宁波荣味盖浇饭","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":15},{"d":"2026-10-20","t":"09:04:21","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.5},{"d":"2026-10-20","t":"13:02:45","p":"荣味盖浇饭诺丁汉店","c":"必要饮食","u":"当月","g":"荣味盖浇饭诺丁汉店","a":19},{"d":"2026-10-20","t":"18:06:45","p":"支付宝-消费上海拉扎斯信息科技有限","c":"必要饮食","u":"三个月","g":"","a":34},{"d":"2026-10-20","t":"18:49:11","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":3.5},{"d":"2026-10-21","t":"12:21:54","p":"宁波市鄞州首南煜程小吃店","c":"必要饮食","u":"当月","g":"章阿姨鲜饺铺","a":13.5},{"d":"2026-10-21","t":"18:10:33","p":"宁波荣味盖浇饭","c":"必要饮食","u":"当月","g":"收款方备注:二维码收款","a":19},{"d":"2026-10-21","t":"18:26:14","p":"浙江太古可口可乐饮料有限公司","c":"必要饮食","u":"当月","g":"先购后付","a":4},{"d":"2026-10-21","t":"20:08:40","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":10.5},{"d":"2026-10-22","t":"08:54:21","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":2.5},{"d":"2026-10-22","t":"13:05:30","p":"由田口餐饮","c":"必要饮食","u":"当月","g":"幺鸡·口水鸡饭(小灶台)","a":20.01},{"d":"2026-10-22","t":"13:15:02","p":"浙江太古可口可乐饮料有限公司","c":"必要饮食","u":"当月","g":"先购后付","a":3},{"d":"2026-10-22","t":"17:54:09","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10225008048131201444652","a":27.8},{"d":"2026-10-22","t":"20:58:56","p":"宁波万里教育后勤服务有限公司","c":"生活日用","u":"当月","g":"校园卡充值","a":20},{"d":"2026-10-23","t":"08:13:19","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5.5},{"d":"2026-10-23","t":"13:03:22","p":"荣味盖浇饭诺丁汉店","c":"必要饮食","u":"当月","g":"荣味盖浇饭诺丁汉店","a":19},{"d":"2026-10-23","t":"18:25:08","p":"由田口餐饮","c":"必要饮食","u":"当月","g":"食嘢·隆江猪脚饭(小灶台)","a":18},{"d":"2026-10-23","t":"18:56:59","p":"十足","c":"休闲饮食","u":"当月","g":"十足","a":21.7},{"d":"2026-10-24","t":"10:20:21","p":"Apple","c":"其他","u":"三个月","g":"apple.com/bill/MTZ56M2L0Za0","a":48},{"d":"2026-10-24","t":"13:00:34","p":"宁波市鄞州首南煜程小吃店","c":"必要饮食","u":"当月","g":"章阿姨鲜饺铺","a":18},{"d":"2026-10-24","t":"15:52:00","p":"十足","c":"必要饮食","u":"当月","g":"十足","a":5},{"d":"2026-10-24","t":"19:00:26","p":"宁波芸英食品有限公司","c":"必要饮食","u":"当月","g":"美团/大众点评点餐订单-10245008048242558574380","a":24.8},{"d":"2026-10-25","t":"11:29:54","p":"由田口餐饮","c":"必要饮食","u":"当月","g":"Sicily西西里(小灶台)","a":28.8},{"d":"2026-10-25","t":"11:57:57","p":"TIMHORTONS","c":"休闲饮食","u":"当月","g":"天好（中国）投资有限公司-诺丁汉大学店-POS1","a":9.5},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"厕所清洁剂","a":39.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"置物架","a":36.8},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"洗面奶","a":42.6},{"d":"","t":"","p":"","c":"运动健康","u":"半年以上","g":"自行车打气筒","a":34},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"洁厕块","a":13.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"垃圾袋","a":12.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"餐盒","a":9.8},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"镊子","a":9.9},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"咖啡豆200g","a":98},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"咖啡电磨","a":160},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"猕猴桃","a":32.8},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"收纳箱*4","a":108.5},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"褥子","a":59},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"荞麦皮枕头","a":69},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"床垫","a":199.8},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"洗衣凝珠","a":35.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"不锈钢双层保温杯","a":49},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"洁面柔巾","a":15.8},{"d":"","t":"","p":"","c":"社交聚餐","u":"当月","g":"牛肉火锅自助","a":79},{"d":"","t":"","p":"","c":"其他","u":"当月","g":"充电宝","a":8},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"湿巾90片*2包","a":13.5},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"湿厕纸","a":8.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"牙膏","a":24.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"沐浴露","a":39.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"洗头水","a":47.5},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"笔记本电脑支架","a":25.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"鼠标垫","a":24},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"无痕挂钩","a":7.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"漱口杯","a":4.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"毛巾两条","a":17.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"悬挂式纸巾180抽","a":19.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"衣物消毒液3.6L","a":69.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"洗手液","a":7.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"插排","a":33.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"除湿袋*6","a":17.9},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"垃圾袋20只*3卷","a":9.9},{"d":"","t":"","p":"","c":"生活日用","u":"当月","g":"理发","a":49},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"无线鼠标","a":122.85},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"牛奶2L","a":31.3},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"咖啡豆200g","a":117},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"猕猴桃18个","a":35.8},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"床笠","a":34.85},{"d":"","t":"","p":"","c":"服饰","u":"半年以上","g":"内裤*4","a":90.34},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"内裤收纳盒","a":36.62},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"床缝填充神器","a":47.9},{"d":"","t":"","p":"","c":"服饰","u":"半年以上","g":"T恤","a":103},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"脏衣篓","a":32},{"d":"","t":"","p":"","c":"生活日用","u":"三个月","g":"擦手纸300抽*6","a":39.9},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"电线固定器","a":13.6},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"墙面专用双面胶","a":8.46},{"d":"","t":"","p":"","c":"生活日用","u":"半年以上","g":"烧水壶","a":75},{"d":"","t":"","p":"","c":"必要饮食","u":"当月","g":"食堂饭","a":34},{"d":"","t":"","p":"","c":"必要饮食","u":"当月","g":"食堂饭","a":27},{"d":"","t":"","p":"","c":"必要饮食","u":"当月","g":"食堂饭","a":21},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"咖啡","a":9.5},{"d":"","t":"","p":"","c":"必要饮食","u":"当月","g":"食堂饭","a":28.8},{"d":"","t":"","p":"","c":"休闲饮食","u":"当月","g":"花生米可乐","a":11},{"d":"","t":"","p":"","c":"必要饮食","u":"当月","g":"食堂饭","a":24.8}]};
+
+(function () {
+  'use strict';
+
+  var PALETTE = ['#2d6ae0','#e8453c','#f5a623','#12b886','#8b5cf6',
+                 '#0ea5e9','#f06595','#5a626c','#20c997','#d93025'];
+
+  var rows = (DATA && DATA.rows) ? DATA.rows : [];
+  var meta = (DATA && DATA.meta) ? DATA.meta : {};
+
+  // 状态
+  var selCat = [];   // 选中的大类（空 = 全部）
+  var selDur = [];   // 选中的耐用分类（空 = 全部）
+  var keyword = '';
+  var sortMode = 'date'; // date | amount
+
+  var colorOf = {};
+  for (var i = 0; i < (meta.categories || []).length; i++) {
+    colorOf[meta.categories[i]] = PALETTE[i % PALETTE.length];
+  }
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function money(n) {
+    var neg = n < 0; var v = Math.abs(n);
+    var s = (Math.round(v * 100) / 100).toFixed(2);
+    var parts = s.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-' : '') + parts.join('.');
+  }
+  function inArr(arr, v) { return arr.indexOf(v) >= 0; }
+  function toggle(arr, v) {
+    var k = arr.indexOf(v);
+    if (k >= 0) arr.splice(k, 1); else arr.push(v);
+  }
+
+  /* ---------- 渲染筛选按钮 ---------- */
+  function buildChips() {
+    var catHtml = '<span class="chip' + (selCat.length ? '' : ' on') + '" data-type="cat" data-val="">全部</span>';
+    var catSum = {};
+    for (var a = 0; a < rows.length; a++) catSum[rows[a].c] = (catSum[rows[a].c] || 0) + rows[a].a;
+    for (var i = 0; i < (meta.categories || []).length; i++) {
+      var c = meta.categories[i];
+      catHtml += '<span class="chip' + (inArr(selCat, c) ? ' on' : '') + '" data-type="cat" data-val="' + esc(c) + '">'
+        + esc(c) + '<span class="amt">' + money(catSum[c] || 0) + '</span></span>';
+    }
+    $('catChips').innerHTML = catHtml;
+
+    var durHtml = '<span class="chip' + (selDur.length ? '' : ' on') + '" data-type="dur" data-val="">全部</span>';
+    var durSum = {};
+    for (var b = 0; b < rows.length; b++) durSum[rows[b].u] = (durSum[rows[b].u] || 0) + rows[b].a;
+    for (var j = 0; j < (meta.durations || []).length; j++) {
+      var d = meta.durations[j];
+      durHtml += '<span class="chip' + (inArr(selDur, d) ? ' on' : '') + '" data-type="dur" data-val="' + esc(d) + '">'
+        + esc(d) + '<span class="amt">' + money(durSum[d] || 0) + '</span></span>';
+    }
+    $('durChips').innerHTML = durHtml;
+  }
+
+  /* ---------- 金额统一用“分”累加，避免浮点误差 ---------- */
+  function cents(n) { return Math.round(n * 100); }
+
+  function currentRows() {
+    var out = [];
+    var kw = keyword.replace(/^\s+|\s+$/g, '').toLowerCase();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (selCat.length && !inArr(selCat, r.c)) continue;
+      if (selDur.length && !inArr(selDur, r.u)) continue;
+      if (kw) {
+        var hay = (r.p + ' ' + r.g + ' ' + r.c + ' ' + r.u + ' ' + r.d).toLowerCase();
+        if (hay.indexOf(kw) < 0) continue;
+      }
+      out.push(r);
+    }
+    if (sortMode === 'amount') {
+      out.sort(function (x, y) { return y.a - x.a; });
+    } else {
+      out.sort(function (x, y) {
+        var kx = (x.d || '0000-00-00') + (x.t || '');
+        var ky = (y.d || '0000-00-00') + (y.t || '');
+        return kx < ky ? -1 : (kx > ky ? 1 : 0);
+      });
+      out.reverse();
+    }
+    return out;
+  }
+
+  /* ---------- 主渲染 ---------- */
+  function render() {
+    var list = currentRows();
+
+    var totalC = 0, byCat = {}, catOrder = [];
+    for (var i = 0; i < list.length; i++) {
+      totalC += cents(list[i].a);
+      var c = list[i].c;
+      if (byCat[c] === undefined) { byCat[c] = 0; catOrder.push(c); }
+      byCat[c] += cents(list[i].a);
+    }
+    catOrder.sort(function (a, b) { return byCat[b] - byCat[a]; });
+
+    $('totalNum').innerHTML = money(totalC / 100);
+    $('count').innerHTML = '共 ' + list.length + ' 笔'
+      + (selCat.length || selDur.length || keyword ? '（全量 ' + rows.length + ' 笔）' : '');
+    $('src').innerHTML = esc(meta.source || '') + (meta.generatedAt ? ' · ' + esc(meta.generatedAt) : '');
+
+    // 占比条形图
+    if (!list.length) {
+      $('bars').innerHTML = '<div class="bar-t"><span>暂无数据</span></div>';
+    } else {
+      var bh = '';
+      for (var k = 0; k < catOrder.length; k++) {
+        var name = catOrder[k];
+        var val = byCat[name] / 100;
+        var pct = totalC ? (byCat[name] / totalC * 100) : 0;
+        bh += '<div class="bar-row">'
+          + '<div class="bar-t"><span>' + esc(name) + '</span>'
+          + '<span class="v">¥' + money(val) + ' · ' + pct.toFixed(1) + '%</span></div>'
+          + '<div class="bar-bg"><div class="bar-fg" style="width:' + pct.toFixed(2) + '%;background:'
+          + (colorOf[name] || PALETTE[0]) + '"></div></div></div>';
+      }
+      $('bars').innerHTML = bh;
+    }
+
+    // 明细
+    if (!list.length) {
+      $('list').innerHTML = '<div class="empty"><span class="big">🍃</span>没有符合条件的记录<br>试试清除筛选或关键词</div>';
+      return;
+    }
+    var html = '', lastDate = '';
+    for (var m = 0; m < list.length; m++) {
+      var r = list[m];
+      if (sortMode === 'date' && r.d && r.d !== lastDate) {
+        lastDate = r.d;
+        html += '<div class="grp-date"><span>' + esc(r.d) + '</span></div>';
+      }
+      var title = r.g && r.g !== '/' ? r.g : (r.p || '—');
+      var metaLine = '';
+      if (r.p) metaLine += esc(r.p);
+      if (r.p && r.g && r.g !== '/') metaLine += ' · ' + esc(r.g);
+      if (!metaLine) metaLine = '—';
+
+      html += '<div class="card">'
+        + '<div class="left">'
+        +   '<div class="name">' + esc(title) + '</div>'
+        +   '<div class="meta"><span class="dot" style="background:' + (colorOf[r.c] || PALETTE[0]) + '"></span>' + metaLine + '</div>'
+        +   '<div class="tags"><span class="tag" style="color:' + (colorOf[r.c] || PALETTE[0]) + '">' + esc(r.c) + '</span>'
+        +   '<span class="tag dur">' + esc(r.u) + '</span></div>'
+        + '</div>'
+        + '<div class="right">'
+        +   '<div class="money">¥' + money(r.a) + '</div>'
+        +   '<div class="when">' + esc(r.d ? r.d.slice(5) : '') + (r.t ? ' ' + esc(r.t.slice(0, 5)) : '') + '</div>'
+        + '</div>'
+        + '</div>';
+    }
+    $('list').innerHTML = html;
+  }
+
+  function refresh() { buildChips(); render(); }
+
+  /* ---------- 事件绑定（事件委托，兼容老内核） ---------- */
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    while (t && t !== document.body && !t.getAttribute('data-type')) t = t.parentNode;
+    if (!t || t === document.body) return;
+    var type = t.getAttribute('data-type');
+    var val = t.getAttribute('data-val');
+    if (type === 'cat') { if (!val) selCat = []; else toggle(selCat, val); refresh(); }
+    if (type === 'dur') { if (!val) selDur = []; else toggle(selDur, val); refresh(); }
+  }, false);
+
+  $('resetCat').addEventListener('click', function () { selCat = []; refresh(); }, false);
+  $('resetDur').addEventListener('click', function () { selDur = []; refresh(); }, false);
+
+  var qi = $('q');
+  var timer = null;
+  qi.addEventListener('input', function () {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { keyword = qi.value || ''; render(); }, 180);
+  }, false);
+  // iOS 键盘“搜索”按钮
+  qi.addEventListener('keydown', function (e) {
+    if (e.keyCode === 13) { keyword = qi.value || ''; render(); qi.blur(); }
+  }, false);
+
+  $('sortBtn').addEventListener('click', function () {
+    sortMode = sortMode === 'date' ? 'amount' : 'date';
+    this.innerHTML = sortMode === 'date' ? '按时间 ↓' : '按金额 ↓';
+    render();
+  }, false);
+
+  /* ---------- 微信 iOS 字体缩放修正 ---------- */
+  if (typeof WeixinJSBridge !== 'undefined' && WeixinJSBridge.invoke) {
+    try {
+      WeixinJSBridge.invoke('setFontSizeCallback', { fontSize: 0 });
+      WeixinJSBridge.on('menu:setfont', function () {
+        WeixinJSBridge.invoke('setFontSizeCallback', { fontSize: 0 });
+      });
+    } catch (err) { /* 忽略 */ }
+  }
+
+  refresh();
+})();
+</script>
+</body>
+</html>
